@@ -1,37 +1,42 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { BedrockAgentRuntimeClient, InvokeAgentCommand, InvokeAgentCommandOutput } from "@aws-sdk/client-bedrock-agent-runtime";
+import { BedrockAgentClient, CreateAgentCommand, CreateAgentAliasCommand, PrepareAgentCommand, AgentAlias } from "@aws-sdk/client-bedrock-agent";
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand, ResponseStream } from '@aws-sdk/client-bedrock-runtime';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { json } from 'stream/consumers';
+import { CreateSessionCommand } from '@aws-sdk/client-bedrock-agent-runtime';
 
 // Declare the model being used and its ID
 const modelID = process.env.BEDROCK_MODEL_ID || 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+const agentID = process.env.AGENT_ID || ''
+const agentAliasID = process.env.AGENT_ALIAS_ID || ''
+
 // Extract body from apigateway event and parse into strings
 export const handler = async(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     const connectionId = event.requestContext.connectionId;
     const body = JSON.parse(event.body || '{}');
     const userMessage = body.message;
 
-    const bedrockClient = new BedrockRuntimeClient({region: process.env.AWS_REGION});
-    const apigatewayClient = new ApiGatewayManagementApiClient({endpoint: `https://${event.requestContext.domainName}/${event.requestContext.stage}`
+    const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+    const agentClient = new BedrockAgentClient({ region: process.env.AWS_REGION });
+    const agentRuntime = new BedrockAgentRuntimeClient({ region: process.env.AWS_REGION })
+
+    const apigatewayClient = new ApiGatewayManagementApiClient({
+        endpoint: `https://${event.requestContext.domainName}/${event.requestContext.stage}`
     });
 
-    const payload = {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 2000,
-    messages: [{ role: "user", content: userMessage }]
-    };
+    const command = new InvokeAgentCommand({
+        agentId: agentID,
+        agentAliasId: agentAliasID,
+        sessionId: connectionId,
+        inputText: userMessage
+    })
 
-    const command = new InvokeModelWithResponseStreamCommand({
-        modelId: modelID,
-        body: JSON.stringify(payload)
-    });
+    const response: InvokeAgentCommandOutput = await agentRuntime.send(command)
 
-    const response = await bedrockClient.send(command);
-
-    // 6. Loop through chunks and send each back via WebSocket
-    if (response.body){
-        for await (const event of response.body) {
-            if (event.chunk?.bytes) {
+    if (response.completion){
+        for await (const event of response.completion) {
+            if (event.chunk && event.chunk?.bytes) {
                 const chunkText = new TextDecoder().decode(event.chunk.bytes);
 
                 const chunkJson = JSON.parse(chunkText);

@@ -2,14 +2,14 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
-export class DatabaseStack extends cdk.Stack {
+export class IvanDatabaseStack extends cdk.Stack {
   public readonly connectionsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // DynamoDB table for WebSocket connections
-    this.connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
+    this.connectionsTable = new dynamodb.Table(this, 'IvanConnectionsTable', {
       partitionKey: {
         name: 'connectionId',
         type: dynamodb.AttributeType.STRING
@@ -20,7 +20,7 @@ export class DatabaseStack extends cdk.Stack {
     });
 
     // Output the table name
-    new cdk.CfnOutput(this, 'ConnectionsTableName', {
+    new cdk.CfnOutput(this, 'IvanConnectionsTableName', {
       value: this.connectionsTable.tableName,
       description: 'DynamoDB table for WebSocket connections'
     });

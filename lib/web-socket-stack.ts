@@ -7,24 +7,32 @@ import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integra
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { WebSocketStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import * as path from 'path';
+import * as bedrock from '@aws-cdk/aws-bedrock-alpha'
 
-interface WebSocketStackProps extends cdk.StackProps {
+interface IvanWebSocketStackProps extends cdk.StackProps {
     connectionsTable: dynamodb.Table;
+    agentId: string;
+    agentAliasId: string;
+    agentArn: string;
+    
 }
 
-export class WebSocket extends cdk.Stack {
-    constructor(scope: Construct, id: string, props: WebSocketStackProps) {
+export class IvanWebSocket extends cdk.Stack {
+    public readonly webSocketUrl: string;
+    public readonly webSocketApiId: string;
+
+    constructor(scope: Construct, id: string, props: IvanWebSocketStackProps) {
         super(scope, id, props);
 
         const table = props.connectionsTable;
 
-        const webSocketApi = new apigatewayv2.WebSocketApi(this, 'RyansChatWebSocketApi', {
-            apiName: 'RyansChatWebSocketApi',
+        const webSocketApi = new apigatewayv2.WebSocketApi(this, 'IvansChatWebSocketApi', {
+            apiName: 'IvansChatWebSocketApi',
             routeSelectionExpression: '$request.body.action',
         });
 
         // Create connect lambda and add route
-        const connect = new lambda.Function(this, 'ryanConnectFunc', {
+        const connect = new lambda.Function(this, 'ivanConnectFunc', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/connect')),
@@ -38,7 +46,7 @@ export class WebSocket extends cdk.Stack {
         });
 
         // create disconnect lambda and add route
-        const disconnect = new lambda.Function(this, 'ryanDisconnectFunc', {
+        const disconnect = new lambda.Function(this, 'ivanDisconnectFunc', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/disconnect')),
@@ -52,13 +60,15 @@ export class WebSocket extends cdk.Stack {
         });
 
         // Create message sending lambda and add route
-        const message = new lambda.Function(this, 'ryanSendMsgFunc', {
+        const message = new lambda.Function(this, 'ivanSendMsgFunc', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/send-message')),
             environment: {
                 TABLE_NAME: table.tableName,
-                BEDROCK_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+                BEDROCK_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+                AGENT_ID: props.agentId,
+                AGENT_ALIAS_ID: props.agentAliasId
             }
         });
 
@@ -72,7 +82,7 @@ export class WebSocket extends cdk.Stack {
         table.grant(message, 'dynamodb:GetItem', 'dynamodb:PutItem');
 
         // Create error handling lambda and add route
-        const errorHandler = new lambda.Function(this, 'ryanErrHndlFunc', {
+        const errorHandler = new lambda.Function(this, 'ivanErrHndlFunc', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/default'))
@@ -85,11 +95,12 @@ export class WebSocket extends cdk.Stack {
         // Grant Bedrock permissions
         message.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
-            actions: ['bedrock:InvokeModelWithResponseStream'],
+            actions: [
+                "bedrock:InvokeAgent",
+            ],
             resources: [
                 // Set region to be agnostic since to acount for routing
-                'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0',
-                `arn:aws:bedrock:*:${this.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0`
+                props.agentArn
             ]
         }));
 
@@ -107,11 +118,16 @@ export class WebSocket extends cdk.Stack {
             resources: [`arn:aws:execute-api:${this.region}:${this.account}:${webSocketApi.apiId}/*`]
         }));
 
+
+
         const stage = new WebSocketStage(this, 'ProdStage', {
             webSocketApi: webSocketApi,
             stageName: 'dev',
             autoDeploy: true
         });
+
+        this.webSocketUrl = stage.url;
+        this.webSocketApiId = webSocketApi.apiId;
 
         new cdk.CfnOutput(this, 'WebSocketURL', {
             value: stage.url,
