@@ -1,0 +1,130 @@
+Description: Bedrock Agent
+Resources:
+  AgentRoleF4A42D6B:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+        Version: "2012-10-17"
+      Description: Role assumed by Bedrock Agent
+    Metadata:
+      aws:cdk:path: IvanAgentStack/AgentRole/Resource
+  AgentRoleDefaultPolicy1027F5D2:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Effect: Allow
+            Resource: arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+          - Action:
+              - bedrock:GetFoundationModel
+              - bedrock:InvokeModel*
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":bedrock:"
+                  - Ref: AWS::Region
+                  - ::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+          - Action:
+              - bedrock:GetInferenceProfile
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Effect: Allow
+            Resource:
+              - arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+              - arn:aws:bedrock:us-east-1:992382601439:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0
+        Version: "2012-10-17"
+      PolicyName: AgentRoleDefaultPolicy1027F5D2
+      Roles:
+        - Ref: AgentRoleF4A42D6B
+    Metadata:
+      aws:cdk:path: IvanAgentStack/AgentRole/DefaultPolicy/Resource
+  IvansAgent1874970F:
+    Type: AWS::Bedrock::Agent
+    Properties:
+      ActionGroups:
+        - ActionGroupName: UserInputAction
+          ActionGroupState: DISABLED
+          ParentActionGroupSignature: AMAZON.UserInput
+          SkipResourceInUseCheckOnDelete: false
+        - ActionGroupName: CodeInterpreterAction
+          ActionGroupState: DISABLED
+          ParentActionGroupSignature: AMAZON.CodeInterpreter
+          SkipResourceInUseCheckOnDelete: false
+      AgentName: Test Agent
+      AgentResourceRoleArn:
+        Fn::GetAtt:
+          - AgentRoleF4A42D6B
+          - Arn
+      AutoPrepare: false
+      FoundationModel:
+        Fn::Join:
+          - ""
+          - - "arn:"
+            - Ref: AWS::Partition
+            - ":bedrock:"
+            - Ref: AWS::Region
+            - ::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+      IdleSessionTTLInSeconds: 600
+      Instruction: You are an assistant with an quirky personality based in Generation Z culture
+      OrchestrationType: DEFAULT
+      SkipResourceInUseCheckOnDelete: false
+    DependsOn:
+      - AgentRoleDefaultPolicy1027F5D2
+    Metadata:
+      aws:cdk:path: IvanAgentStack/IvansAgent/Resource
+  AgentAlias20241917:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentAliasName: dev
+      AgentId:
+        Fn::GetAtt:
+          - IvansAgent1874970F
+          - AgentId
+      Description: Alias for agent
+    Metadata:
+      aws:cdk:path: IvanAgentStack/AgentAlias/Resource
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/5WSy2rDMBBFvyVaBlmxXbqoV3Wy6q442ZlQJtKkUSxLxpIbgvC/Fz/yKIaSrGY4d+bOFShmPo5eWTiDkw24KAIld8yvHfCCwsl+eQkl85lRmHsC1jYliuWZJJ5UtdRcVqBSzk2jHUnInNBxpltIuZNG97ilRKDltazukCcgxMZ8GiX5mSS5b7c3eDGfqM4BP3xoJTVeNTInD4j/+z4ZZUtXe929kg64O3NNsDGdMgk2xUKsHTgsUTv75+yjuI8xJGjpDkVteMH8aq/Tb9SOXppUSbBtSzO0pqk5jgni+I2FAajqACycvY9fYNHV0WsUfe/Sb9Gb4RIs5vdgsG2pNgLZ0S5+4pBFLyyaHa2UQd1oJ0tk2VB/AWSzROZ6AgAA
+    Metadata:
+      aws:cdk:path: IvanAgentStack/CDKMetadata/Default
+Outputs:
+  ExportsOutputFnGetAttIvansAgent1874970FAgentArnA8F9EE6F:
+    Value:
+      Fn::GetAtt:
+        - IvansAgent1874970F
+        - AgentArn
+    Export:
+      Name: IvanAgentStack:ExportsOutputFnGetAttIvansAgent1874970FAgentArnA8F9EE6F
+  ExportsOutputFnGetAttIvansAgent1874970FAgentIdFA5BA9AC:
+    Value:
+      Fn::GetAtt:
+        - IvansAgent1874970F
+        - AgentId
+    Export:
+      Name: IvanAgentStack:ExportsOutputFnGetAttIvansAgent1874970FAgentIdFA5BA9AC
+  ExportsOutputFnGetAttAgentAlias20241917AgentAliasIdF158FA24:
+    Value:
+      Fn::GetAtt:
+        - AgentAlias20241917
+        - AgentAliasId
+    Export:
+      Name: IvanAgentStack:ExportsOutputFnGetAttAgentAlias20241917AgentAliasIdF158FA24
+Parameters:
+  BootstrapVersion:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /cdk-bootstrap/hnb659fds/version
+    Description: Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]
+

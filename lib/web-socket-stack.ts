@@ -59,14 +59,18 @@ export class IvanWebSocket extends cdk.Stack {
             integration: new WebSocketLambdaIntegration('DisconnectIntegration', disconnect)
         });
 
+        const foundation = bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_HAIKU_V1_0;
+
         // Create message sending lambda and add route
         const message = new lambda.Function(this, 'ivanSendMsgFunc', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/send-message')),
+            timeout: cdk.Duration.seconds(60),
+            memorySize: 512,
             environment: {
                 TABLE_NAME: table.tableName,
-                BEDROCK_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+                BEDROCK_MODEL_ID: foundation.modelId,
                 AGENT_ID: props.agentId,
                 AGENT_ALIAS_ID: props.agentAliasId
             }
@@ -92,33 +96,24 @@ export class IvanWebSocket extends cdk.Stack {
             integration: new WebSocketLambdaIntegration('DefaultIntegration', errorHandler)
         });
 
-        // Grant Bedrock permissions
+        // Grant Bedrock permissions for agent invocation
         message.addToRolePolicy(new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            actions: [
-                "bedrock:InvokeAgent",
-            ],
-            resources: [
-                // Set region to be agnostic since to acount for routing
-                props.agentArn
-            ]
-        }));
-
-
-        // Grant API Gateway management permissions
-        message.addToRolePolicy(new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            actions: ['execute-api:ManageConnections'],
-            resources: [`arn:aws:execute-api:${this.region}:${this.account}:${webSocketApi.apiId}/*`]
-        }));
+    effect: iam.Effect.ALLOW,
+    actions: [
+        "bedrock:InvokeAgent",
+        "execute-api:ManageConnections"
+    ],
+    resources: [
+        `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/${props.agentId}/${props.agentAliasId}`,
+        `arn:aws:execute-api:${this.region}:${this.account}:${webSocketApi.apiId}/*`
+    ]
+}));
 
         errorHandler.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
             actions: ['execute-api:ManageConnections'],
             resources: [`arn:aws:execute-api:${this.region}:${this.account}:${webSocketApi.apiId}/*`]
         }));
-
-
 
         const stage = new WebSocketStage(this, 'ProdStage', {
             webSocketApi: webSocketApi,

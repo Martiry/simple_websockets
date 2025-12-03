@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import * as bedrock from '@aws-cdk/aws-bedrock-alpha'
+import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
 export interface BedrockAgentStackProps extends cdk.StackProps {
@@ -14,17 +14,16 @@ export class IvanAgentStack extends cdk.Stack {
   public readonly agentAliasId: string
   public readonly agentArn: string
 
- constructor(scope: Construct, id: string, props?: BedrockAgentStackProps) {
+  constructor(scope: Construct, id: string, props?: BedrockAgentStackProps) {
     super(scope, id, props);
 
-    const foundation = bedrock.BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_HAIKU_V1_0;
+    // Claude 3 Haiku - lightweight and fast
+    const foundationModelId = 'anthropic.claude-3-haiku-20240307-v1:0';
 
     const agentRole = new iam.Role(this, 'AgentRole', {
       assumedBy: new iam.ServicePrincipal('bedrock.amazonaws.com'),
       description: 'Role assumed by Bedrock Agent',
     });
-
-
 
     agentRole.addToPolicy(
       new iam.PolicyStatement({
@@ -33,28 +32,47 @@ export class IvanAgentStack extends cdk.Stack {
           'bedrock:InvokeModel',
           'bedrock:InvokeModelWithResponseStream',
         ],
-        resources: [`arn:aws:bedrock:${this.region}::foundation-model/${foundation.modelId}`],
+        resources: [
+          'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-20240307-v1:0',
+        ],
       })
     );
-    
 
-    const agent = new bedrock.Agent(this, 'IvansAgent', {
-      agentName: props?.agentName || 'ivans-agent',
-      foundationModel: foundation,
-      instruction: props?.instruction || 'You are an overworked assistant short on time.',
-      existingRole: agentRole
-      
+    // Use CfnAgent directly
+    const cfnAgent = new bedrock.CfnAgent(this, 'IvansAgent', {
+      agentName: (props?.agentName || 'ivans-agent').replace(/\s+/g, '-').toLowerCase(),
+      foundationModel: foundationModelId,
+      instruction: props?.instruction || 'You are an assistant with an quirky personality based in Generation Z culture',
+      agentResourceRoleArn: agentRole.roleArn,
+      idleSessionTtlInSeconds: 600,
+      autoPrepare: false,
+      orchestrationType: 'DEFAULT',
     });
 
-    const agentAlias = new bedrock.AgentAlias(this, 'AgentAlias', {
-      agent: agent,
+    // Create agent alias
+    const cfnAgentAlias = new bedrock.CfnAgentAlias(this, 'AgentAlias', {
+      agentId: cfnAgent.attrAgentId,
       agentAliasName: 'dev',
-      description: 'Alias for agent' 
+      description: 'Alias for agent'
+    });
 
-    })
+    this.agentId = cfnAgent.attrAgentId;
+    this.agentAliasId = cfnAgentAlias.attrAgentAliasId;
+    this.agentArn = cfnAgent.attrAgentArn;
 
-    this.agentId = agent.agentId
-    this.agentAliasId = agentAlias.aliasId
-    this.agentArn = agent.agentArn
- }
+    new cdk.CfnOutput(this, 'AgentId', {
+      value: this.agentId,
+      exportName: 'IvanAgentId'
+    });
+
+    new cdk.CfnOutput(this, 'AgentAliasId', {
+      value: this.agentAliasId,
+      exportName: 'IvanAgentAliasId'
+    });
+
+    new cdk.CfnOutput(this, 'AgentArn', {
+      value: this.agentArn,
+      exportName: 'IvanAgentArn'
+    });
+  }
 }
